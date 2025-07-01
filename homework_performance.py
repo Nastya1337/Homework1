@@ -113,7 +113,7 @@ matrices_gpu = [mat.to(device) for mat in matrices_cpu]
 def print_table(headers, rows):
     """
     Функция, позволяюшая вывести формат строки
-    :param headers: бошка
+    :param headers: головные параметры
     :param rows: строка
     :return: формат строки
     """
