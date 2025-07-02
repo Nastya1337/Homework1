@@ -92,107 +92,69 @@ if __name__ == "__main__":
     result: object = test_matmul(x)
 
 # # Задание 3.3
-#
-# # Проверка доступности CUDA
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-# print(f"Используемое устройство: {device}\n")
-#
-#
-#
-# # Создание больших матриц
-# matrix_sizes = [
-#     (64, 1024, 1024),
-#     (128, 512, 512),
-#     (256, 256, 256)
-# ]
-#
-# matrices_cpu = [torch.randn(size) for size in matrix_sizes]
-# matrices_gpu = [mat.to(device) for mat in matrices_cpu]
-#
-#
-# def print_table(headers, rows):
-#     """
-#     Функция, позволяюшая вывести формат строки
-#     :param headers: головные параметры
-#     :param rows: строка
-#     :return: формат строки
-#     """
-#     # Определяем ширину колонок
-#     col_widths = {
-#         max(len(str(row[i])) for row in [headers] + rows
-#             for i in range(len(headers)))
-#     }
-#
-#     # Создаем формат строки
-#     row_format = " | ".join(["{:<" + str(width) + "}" for width in col_widths])
-#
-#     # Печатаем заголовки
-#     print(row_format.format(*headers))
-#     print("-" * (sum(col_widths) + 3 * (len(col_widths) - 1)))
-#
-#     # Печатаем строки
-#     for row in rows:
-#         print(row_format.format(*row))
-#
-#
-# def measure_time(operation, description):
-#     results = []
-#
-#     for i, (mat_cpu, mat_gpu) in enumerate(zip(matrices_cpu, matrices_gpu)):
-#         size_str = f"{matrix_sizes[i][0]}x{matrix_sizes[i][1]}x{matrix_sizes[i][2]}"
-#
-#         # Измерение на CPU
-#         start_time = time.time()
-#         result_cpu = operation(mat_cpu)
-#         cpu_time = (time.time() - start_time) * 1000  # мс
-#
-#         # Измерение на GPU (если доступен)
-#         if torch.cuda.is_available():
-#             start_event = torch.cuda.Event(enable_timing=True)
-#             end_event = torch.cuda.Event(enable_timing=True)
-#
-#             torch.cuda.synchronize()
-#             start_event.record()
-#             result_gpu = operation(mat_gpu)
-#             end_event.record()
-#             torch.cuda.synchronize()
-#
-#             gpu_time = start_event.elapsed_time(end_event)  # уже в мс
-#             speedup = cpu_time / gpu_time
-#             gpu_time_str = f"{gpu_time:.1f}"
-#             speedup_str = f"{speedup:.1f}x"
-#         else:
-#             gpu_time_str = "N/A"
-#             speedup_str = "N/A"
-#
-#         results.append([
-#             description if i == 0 else "",
-#             size_str,
-#             f"{cpu_time:.1f}",
-#             gpu_time_str,
-#             speedup_str
-#         ])
-#
-#     return results
-#
-#
-# # Определение операций
-# operations = [
-#     (lambda x: torch.matmul(x, x), "Матричное умножение"),
-#     (lambda x: x + x, "Поэлементное сложение"),
-#     (lambda x: x * x, "Поэлементное умножение"),
-#     (lambda x: x.transpose(-2, -1), "Транспонирование"),
-#     (lambda x: torch.sum(x), "Сумма всех элементов")
-# ]
-#
-# # Измерение времени для всех операций
-# all_results = []
-# for op, desc in operations:
-#     all_results.extend(measure_time(op, desc))
-#
-# # Вывод результатов в табличном виде
-# headers = ["Операция", "Размер матрицы", "CPU (мс)", "GPU (мс)", "Ускорение"]
-# print_table(headers, all_results)
+
+# Установим размер матриц
+N = 1000  # Размер матриц
+
+# Создаем случайные тензоры для операций
+a = torch.randn(N, N)
+b = torch.randn(N, N)
 
 
+# Функция для измерения времени выполнения
+def measure_time(func, *args, device='cpu', warmup=10, repeats=100):
+    # Переносим данные на нужное устройство
+    if device == 'cuda':
+        for arg in args:
+            arg = arg.to('cuda')
+
+    # Прогрев
+    for _ in range(warmup):
+        func(*args)
+
+    # Измерение времени
+    times = []
+    for _ in range(repeats):
+        start_time = time.time()
+        func(*args)
+        times.append(time.time() - start_time)
+
+    return sum(times) / len(times) * 1000  # Возвращаем среднее время в миллисекундах
+
+
+# Список операций для тестирования
+operations = {
+    "Матричное умножение": lambda: torch.matmul(a, b),
+    "Поэлементное сложение": lambda: a + b,
+    "Поэлементное умножение": lambda: a * b,
+    "Транспонирование": lambda: a.t(),
+    "Сумма всех элементов": lambda: a.sum()
+}
+
+# Сбор результатов
+results = []
+
+for op_name, op_func in operations.items():
+    # Измеряем время на CPU
+    cpu_time = measure_time(op_func, device='cpu')
+
+    # Измеряем время на GPU, если доступен
+    gpu_time = None
+    if torch.cuda.is_available():
+        gpu_time = measure_time(op_func, device='cuda')
+
+    # Рассчитываем ускорение
+    speedup = None
+    if gpu_time is not None:
+        speedup = cpu_time / gpu_time
+
+    results.append((op_name, cpu_time, gpu_time, speedup))
+
+# Вывод результатов в табличном виде
+print(f"{'Операция':<25} | {'CPU (мс)':<10} | {'GPU (мс)':<10} | {'Ускорение':<10}")
+print("-" * 70)
+for op_name, cpu_time, gpu_time, speedup in results:
+    gpu_time_str = f"{gpu_time:.2f}" if gpu_time is not None else "N/A"
+    speedup_str = f"{speedup:.2f}x" if speedup is not None else "N/A"
+    print(f"{op_name:<25} | {cpu_time:<10.2f} | {gpu_time_str:<10} | {speedup_str:<10}")
 
